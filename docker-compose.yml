@@ -1,0 +1,47 @@
+
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+      - web
+
+  api:
+    container_name: candivana-api
+    build: ./backend
+    expose:
+      - "3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    environment:
+      - DATABASE_URL=file:/app/data/dev.db
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set (no insecure default)}
+      - NODE_ENV=${NODE_ENV:-development}
+      - CORS_ORIGIN=${CORS_ORIGIN:-}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+    command: sh -c "rm -rf node_modules/.prisma && npx prisma generate && npx prisma db push && npm run dev"
+
+  web:
+    container_name: candivana-web
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    expose:
+      - "5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=/api
+    command: npm run dev -- --host
+    depends_on:
+      - api

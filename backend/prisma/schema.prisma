@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String?
+  isAdmin   Boolean  @default(false)
+  // Notification preferences
+  notifyEmail      Boolean @default(true)
+  notifyReminders  Boolean @default(true)
+  notifyDigest     Boolean @default(false)
+  // AI (OpenAI-compatible) configuration for natural-language job entry
+  aiApiBase        String?
+  aiApiKey         String?
+  aiModel          String?
+  aiMaxRetries     Int      @default(2)
+  applications Application[]
+  resumes    Resume[]
+  adminLogs  AdminLog[]
+  letterBlocks   LetterBlock[]
+  letterVersions LetterVersion[]
+  letterFolders  LetterFolder[]
+  letterVersionGroups LetterVersionGroup[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A category folder for organizing cells. One level deep (folders hold cells).
+model LetterFolder {
+  id        Int      @id @default(autoincrement())
+  name      String
+  position  Int      @default(0) // manual sort order (lower = higher in the list)
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  blocks    LetterBlock[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Reusable paragraph ("battery cell") for composing motivation letters
+model LetterBlock {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  folderId  Int?           // null = at the root (unfiled)
+  folder    LetterFolder?  @relation(fields: [folderId], references: [id])
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A named letter version: an ordered chain of LetterBlock ids
+model LetterVersion {
+  id        Int      @id @default(autoincrement())
+  name      String
+  blockIds  String   @default("[]") // JSON array of LetterBlock ids, in reading order
+  groupId   Int?
+  group     LetterVersionGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  applications Application[] @relation("ApplicationLetterVersion")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A one-level group for organizing motivation-letter versions.
+model LetterVersionGroup {
+  id        Int      @id @default(autoincrement())
+  name      String
+  position  Int      @default(0)
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  versions  LetterVersion[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Application {
+  id          Int      @id @default(autoincrement())
+  company     String
+  position    String
+  link        String?
+  platform    String?
+  status      String   @default("To Apply") // To Apply, Applied, Interviewing, Offer, Rejected
+  isArchived  Boolean  @default(false) // archive is an independent flag — it never overwrites `status`
+  previousStatus String? // deprecated: kept for backward-compat migration only
+  appliedDate DateTime @default(now())
+  notes       String?
+  cv          String?
+  coverLetter String?
+  salary      String?  // Optional salary information (can be text like "80k-100k" or "Not mentioned")
+  isStarred   Boolean  @default(false) // Mark as favorite/important
+  contractType String? // "intern", "full-time", "contract", etc.
+  resumeId    Int?
+  resume      Resume?  @relation("ApplicationResume", fields: [resumeId], references: [id])
+  letterVersionId Int? // linked motivation-letter version (Letters view)
+  letterVersion   LetterVersion? @relation("ApplicationLetterVersion", fields: [letterVersionId], references: [id], onDelete: SetNull)
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  stages      ApplicationStage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Resume {
+  id          Int      @id @default(autoincrement())
+  name        String   // e.g., "Frontend Developer CV", "Full-stack Resume"
+  fileName    String   // Original file name
+  filePath    String   // Path to stored file
+  fileSize    Int      // File size in bytes
+  uploadedAt  DateTime @default(now())
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  applications Application[] @relation("ApplicationResume")
+}
+
+model ApplicationStage {
+  id            Int         @id @default(autoincrement())
+  applicationId Int
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  stageName     String      // "HR Interview", "Technical Test", etc.
+  status        String      // "passed", "failed", "upcoming"
+  date          DateTime    @default(now())
+  notes         String?
+  createdAt     DateTime    @default(now())
+}
+
+model AdminLog {
+  id        Int      @id @default(autoincrement())
+  adminId   Int
+  admin     User     @relation(fields: [adminId], references: [id])
+  action    String   // "view_users", "view_stats", etc.
+  details   String?  // Additional context
+  ip        String   // Request IP address
+  createdAt DateTime @default(now())
+}

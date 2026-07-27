@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* layered light-blue surfaces — cards stay white and float on top */
+  --bg: #bfe1e9;        /* app / board background (cyan-leaning light blue) */
+  --panel: #e8f6f9;     /* column panels — a lighter cyan, between bg and cards */
+  --surface: #ffffff;   /* cards float on top */
+  --border: #c8e2e6;
+  --ink: #0e4a58;       /* deep cyan-blue used for the brand mark */
+  --muted: #5b7681;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  @apply text-stone-900;
+  background-color: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: -0.006em;
+}
+
+/* subtle dot-grid board surface — modern, calm, not a gradient */
+.board-surface {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(14, 116, 130, 0.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+
+/* quiet, precise scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #d6d3d1;
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

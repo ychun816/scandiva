@@ -1,0 +1,79 @@
+# Production stack — Cloudflare Tunnel ingress, zero published host ports.
+#
+#   Browser ──HTTPS──▶ Cloudflare edge ──tunnel──▶ cloudflared ─▶ web:80 ─▶ api:3000
+#
+# Run on the server with:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Requires a .env.production file next to this one (see .env.production.example).
+
+services:
+  api:
+    container_name: candivana-api
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/prod.db
+    volumes:
+      - api-data:/app/data
+      - api-uploads:/app/uploads
+    # Sync the schema, then run the real server (node, not nodemon).
+    # Deliberately does NOT seed a default admin — create one with scripts/create_admin.js.
+    command: sh -c "npx prisma generate && npx prisma db push && npm start"
+    expose:
+      - "3000"
+    healthcheck:
+      # `node` is guaranteed present in this image; hit the API root.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s   # allow prisma db push + boot
+    networks:
+      - internal
+
+  web:
+    container_name: candivana-web
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile   # multi-stage: builds the SPA, serves it via nginx + proxies /api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "80"
+    healthcheck:
+      # nginx:alpine ships busybox wget.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+
+  # Outbound-only tunnel: no inbound ports are opened on the host.
+  # Set the public hostname in the Cloudflare Zero Trust dashboard to target
+  # the service URL  http://web:80  (reachable on this compose network).
+  cloudflared:
+    container_name: candivana-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: .env.production   # provides TUNNEL_TOKEN
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - internal
+
+volumes:
+  api-data:
+  api-uploads:
+
+networks:
+  internal:
+    driver: bridge

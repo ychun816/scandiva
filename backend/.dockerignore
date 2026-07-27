@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+node_modules
+npm-debug.log*
+coverage
+data
+prisma/data
+uploads
+tests
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
