@@ -35,21 +35,31 @@
 - [x] `backend/tests/jobs.test.js` (22 tests, fixtures in `tests/fixtures/`, `fetch` stubbed)
 - [x] README feature list, DEPLOY.md, `.env.production.example`, UPDATE_SCANDIVA.md decision note
 
-## Follow-ups
+## Next steps (in priority order)
 
-- [ ] Manual check against real boards (`make up`, e.g. Greenhouse `gitlab`, Lever `netflix`)
-- [ ] New-posting count badge on the Jobs nav button
-- [ ] Prune old dismissed postings so the table doesn't grow forever
-- [ ] SSRF guard for RSS URLs (block private / loopback / metadata IPs). Needed before opening registration; shared with `safeFetch` below
-- [ ] Consider moving from `prisma db push` to `prisma migrate` (NOTE.md §10 #6)
+1. **Manual check against real boards**: the adapters were only tested against fixtures.
+   - [ ] `make up`, then create a search in Jobs: Greenhouse `gitlab`, Lever `netflix`, query `engineer`
+   - [ ] Press Run now and check postings appear with no `lastError`
+   - [ ] Add one to the board and confirm it shows under To Apply
+2. **Open a PR to `main`**
+   - [ ] Optionally rename the branch from `docs/job-scout-email-plan` to `feat/job-scout`
+   - [ ] Make sure CI (backend tests + frontend build) passes
+3. **SSRF guard for RSS URLs**: required before opening registration; Phase 3 reuses it
+   - [ ] `scrapers/safeFetch.js`: resolve DNS first, block private / loopback / link-local / `169.254.169.254`, re-check every redirect hop
+   - [ ] Route `rss.js` through it, with tests for each blocked case
+4. **Small improvements** (not urgent)
+   - [ ] New-posting count badge on the Jobs nav button
+   - [ ] Prune old dismissed postings so the table doesn't grow forever
+   - [ ] Consider moving from `prisma db push` to `prisma migrate` (NOTE.md §10 #6)
+5. **Email Phase 1** (UPDATE_SCANDIVA.md §2.2, §11): unblocks the job digest below
+   - [ ] SMTP settings with the password encrypted via `ENCRYPTION_KEY`, plus `/email/test`
+   - [ ] Interview reminders driven by the existing scheduler, idempotent via `EmailLog`
 
 ## Phase 3: HTML + AI adapter
 
 - [ ] Extract the parse-job core from `ai.routes.js` into `lib/parseJob.js` and have the route use it
-- [ ] `scrapers/safeFetch.js`:
-  - [ ] Resolve DNS first; block private IPs, loopback, link-local and `169.254.169.254`
-  - [ ] Re-check every redirect hop; never follow into an internal network
-  - [ ] 15 s timeout, 2 MB response cap
+- [ ] Extend `scrapers/safeFetch.js` (from next step 3) for HTML pages:
+  - [ ] 2 MB response cap
   - [ ] Respect robots.txt and rate-limit per domain
 - [ ] `html.js` (adds `cheerio`): safeFetch → strip script/nav, extract text → `parseJob` (skip and record `lastError` when the user has no AI configured)
 - [ ] Add an "Any URL" source option to the search editor
