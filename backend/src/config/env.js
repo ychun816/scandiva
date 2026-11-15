@@ -35,4 +35,8 @@ module.exports = {
   allowRegistration: process.env.ALLOW_REGISTRATION
     ? process.env.ALLOW_REGISTRATION === 'true'
     : !isProduction,
+  // Job Scout: the scheduler runs inside the api process unless disabled.
+  enableScheduler: process.env.ENABLE_SCHEDULER !== 'false',
+  scraperMinIntervalMin: Number(process.env.SCRAPER_MIN_INTERVAL_MIN) || 60,
+  scraperUserAgent: process.env.SCRAPER_USER_AGENT || 'CandivanaBot/1.0 (+self-hosted)',
 };

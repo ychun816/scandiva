@@ -12,6 +12,7 @@ const uploadsRoutes = require('./routes/uploads.routes');
 const lettersRoutes = require('./routes/letters.routes');
 const aiRoutes = require('./routes/ai.routes');
 const adminRoutes = require('./routes/admin.routes');
+const jobsRoutes = require('./routes/jobs.routes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use(uploadsRoutes);
 app.use(lettersRoutes);
 app.use(aiRoutes);
 app.use(adminRoutes);
+app.use(jobsRoutes);
 
 app.use(errorHandler);
 

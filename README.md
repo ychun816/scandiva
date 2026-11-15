@@ -13,6 +13,7 @@ Track applications, interviews, CVs, and motivation letters in one place while k
 ## Features
 
 - **Application board** — manage your pipeline with drag-and-drop, search, filters, starring, and archiving.
+- **Job Inbox** — save searches over Greenhouse boards, Lever companies, or RSS feeds; new matching postings are fetched on a schedule, deduplicated, and added to the board in one click.
 - **Interview tracking** — record each stage, date, result, and note; view upcoming activity in the calendar.
 - **Reusable motivation letters** — assemble letter versions from reusable paragraphs, preview exact A4 page breaks, and export to PDF.
 - **CV and document library** — store CV variants and keep the exact documents sent with each application.

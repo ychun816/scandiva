@@ -30,6 +30,8 @@ model User {
   letterVersions LetterVersion[]
   letterFolders  LetterFolder[]
   letterVersionGroups LetterVersionGroup[]
+  jobSearches JobSearch[]
+  jobPostings JobPosting[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -108,6 +110,7 @@ model Application {
   userId      Int?
   user        User?    @relation(fields: [userId], references: [id])
   stages      ApplicationStage[]
+  jobPosting  JobPosting? // set when the application was converted from a scraped posting
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -143,4 +146,46 @@ model AdminLog {
   details   String?  // Additional context
   ip        String   // Request IP address
   createdAt DateTime @default(now())
+}
+
+// A saved job search, fetched on a schedule by the in-process scheduler.
+model JobSearch {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  query        String              // keywords, matched against the posting title
+  location     String?
+  sources      String   @default("[]") // JSON: [{ type: "greenhouse", board }, { type: "lever", company }, { type: "rss", url }]
+  frequencyMin Int      @default(1440) // fetch interval in minutes; floor is SCRAPER_MIN_INTERVAL_MIN
+  isActive     Boolean  @default(true)
+  lastRunAt    DateTime?
+  lastError    String?
+  postings     JobPosting[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// A posting found by a JobSearch. Deduped per user on (source, externalId).
+model JobPosting {
+  id            Int        @id @default(autoincrement())
+  userId        Int
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchId      Int?
+  search        JobSearch? @relation(fields: [searchId], references: [id], onDelete: SetNull)
+  source        String              // "greenhouse" | "lever" | "rss"
+  externalId    String              // id from the source; sha1 of the url when it has none
+  url           String
+  company       String
+  title         String
+  location      String?
+  salary        String?
+  contractType  String?
+  postedAt      DateTime?
+  status        String     @default("new") // new | saved | dismissed | converted
+  applicationId Int?       @unique
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+
+  @@unique([userId, source, externalId])
 }

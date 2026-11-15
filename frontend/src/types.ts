@@ -80,3 +80,43 @@ export interface User {
     email: string;
     name?: string;
 }
+
+// ----- Job Scout -----
+
+export type JobSource =
+    | { type: 'greenhouse'; board: string }
+    | { type: 'lever'; company: string }
+    | { type: 'rss'; url: string };
+
+export interface JobSearch {
+    id: number;
+    name: string;
+    query: string;
+    location?: string | null;
+    sources: JobSource[];
+    frequencyMin: number;
+    isActive: boolean;
+    lastRunAt?: string | null;
+    lastError?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export type JobPostingStatus = 'new' | 'saved' | 'dismissed' | 'converted';
+
+export interface JobPosting {
+    id: number;
+    searchId?: number | null;
+    source: JobSource['type'];
+    externalId: string;
+    url: string;
+    company: string;
+    title: string;
+    location?: string | null;
+    salary?: string | null;
+    contractType?: string | null;
+    postedAt?: string | null;
+    status: JobPostingStatus;
+    applicationId?: number | null;
+    createdAt: string;
+}

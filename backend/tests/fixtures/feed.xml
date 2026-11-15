@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Jobs</title>
+    <link>https://jobs.example.com</link>
+    <description>Backend jobs</description>
+    <item>
+      <title>Backend Engineer (Node.js)</title>
+      <link>https://jobs.example.com/42</link>
+      <guid>job-42</guid>
+      <pubDate>Tue, 10 Nov 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Backend Engineer without guid</title>
+      <link>https://jobs.example.com/43</link>
+    </item>
+  </channel>
+</rss>

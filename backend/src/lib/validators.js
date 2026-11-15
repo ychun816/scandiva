@@ -53,6 +53,51 @@ const validateApplicationFields = ({ status, contractType } = {}) => {
   return null;
 };
 
+// ----- Job Scout -----
+
+const JOB_POSTING_STATUSES = ['new', 'saved', 'dismissed', 'converted'];
+const JOB_SOURCE_TYPES = ['greenhouse', 'lever', 'rss'];
+
+// Board/company slugs end up in an upstream URL path, so keep them to a safe charset.
+const slugRegex = /^[A-Za-z0-9._-]{1,100}$/;
+
+// Validate one entry of JobSearch.sources. Returns an error string or null.
+const validateJobSource = (s) => {
+  if (!s || typeof s !== 'object' || !JOB_SOURCE_TYPES.includes(s.type)) {
+    return `Each source needs a type: ${JOB_SOURCE_TYPES.join(', ')}`;
+  }
+  if (s.type === 'greenhouse' && !slugRegex.test(s.board || '')) return 'Greenhouse sources need a valid board name';
+  if (s.type === 'lever' && !slugRegex.test(s.company || '')) return 'Lever sources need a valid company slug';
+  if (s.type === 'rss') {
+    try {
+      const u = new URL(s.url);
+      if (!['http:', 'https:'].includes(u.protocol)) return 'RSS URLs must be http(s)';
+    } catch {
+      return 'RSS sources need a valid URL';
+    }
+  }
+  return null;
+};
+
+// Validate a job search payload. `partial` skips required checks for updates.
+// Returns an error string, or null when acceptable.
+const validateJobSearch = ({ name, query, frequencyMin, sources } = {}, { partial = false, minIntervalMin = 60 } = {}) => {
+  const blank = (v) => typeof v !== 'string' || !v.trim();
+  if ((!partial || name !== undefined) && blank(name)) return 'Name is required';
+  if ((!partial || query !== undefined) && blank(query)) return 'Query is required';
+  if (frequencyMin !== undefined && (!Number.isInteger(frequencyMin) || frequencyMin < minIntervalMin)) {
+    return `frequencyMin must be an integer >= ${minIntervalMin}`;
+  }
+  if (!partial || sources !== undefined) {
+    if (!Array.isArray(sources) || sources.length === 0 || sources.length > 20) return 'Provide 1-20 sources';
+    for (const s of sources) {
+      const err = validateJobSource(s);
+      if (err) return err;
+    }
+  }
+  return null;
+};
+
 module.exports = {
   validatePassword,
   emailRegex,
@@ -64,4 +109,7 @@ module.exports = {
   validateApplicationFields,
   AI_ALLOWED_STATUS,
   AI_ALLOWED_CONTRACT,
+  JOB_POSTING_STATUSES,
+  JOB_SOURCE_TYPES,
+  validateJobSearch,
 };

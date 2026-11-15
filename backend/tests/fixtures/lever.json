@@ -1,0 +1,17 @@
+[
+  {
+    "id": "a1b2c3",
+    "text": "Backend Engineer Intern",
+    "hostedUrl": "https://jobs.lever.co/globex/a1b2c3",
+    "categories": { "location": "Paris", "commitment": "Internship" },
+    "createdAt": 1762700000000
+  },
+  {
+    "id": "d4e5f6",
+    "text": "Sales Manager",
+    "hostedUrl": "https://jobs.lever.co/globex/d4e5f6",
+    "categories": { "location": "Berlin", "commitment": "Full Time" },
+    "salaryRange": { "min": 60000, "max": 80000, "currency": "EUR" },
+    "createdAt": 1762800000000
+  }
+]

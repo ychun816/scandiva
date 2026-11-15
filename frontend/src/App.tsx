@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { DndContext, DragOverlay, closestCorners, pointerWithin, CollisionDetection, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Plus, Search, LayoutDashboard, Calendar, BarChart3, FileText, Archive, Sparkles, Lightbulb, PenLine } from 'lucide-react';
+import { Plus, Search, LayoutDashboard, Calendar, BarChart3, FileText, Archive, Sparkles, Lightbulb, PenLine, Radar } from 'lucide-react';
 import axios from 'axios';
 import { Column } from './components/Column';
 import { ApplicationCard } from './components/ApplicationCard';
@@ -13,6 +13,7 @@ import { CVManagementView } from './components/CVManagementView';
 import { ArchivedView } from './components/ArchivedView';
 import { CollapsedArchive } from './components/CollapsedArchive';
 import { LettersView } from './components/LettersView';
+import { JobInboxView } from './components/JobInboxView';
 import { AiAddModal } from './components/AiAddModal';
 import { AiSettingsModal } from './components/AiSettingsModal';
 import { AiSummaryModal } from './components/AiSummaryModal';
@@ -54,7 +55,7 @@ function App() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [view, setView] = useState<'board' | 'calendar' | 'analytics' | 'cv' | 'letters' | 'archived' | 'profile' | 'settings' | 'privacy' | 'terms' | 'admin'>('board');
+    const [view, setView] = useState<'board' | 'calendar' | 'analytics' | 'cv' | 'letters' | 'jobs' | 'archived' | 'profile' | 'settings' | 'privacy' | 'terms' | 'admin'>('board');
     const { user, isLoading } = useAuth();
     const [isRegistering, setIsRegistering] = useState(false);
     const [isAiAddOpen, setIsAiAddOpen] = useState(false);
@@ -294,6 +295,7 @@ function App() {
                             { id: 'analytics', label: 'Analytics', Icon: BarChart3 },
                             { id: 'cv', label: 'CV', Icon: FileText },
                             { id: 'letters', label: 'Letters', Icon: PenLine },
+                            { id: 'jobs', label: 'Jobs', Icon: Radar },
                             { id: 'archived', label: 'Archive', Icon: Archive },
                         ] as const).map(({ id, label, Icon }) => (
                             <button
@@ -414,6 +416,10 @@ function App() {
                     </div>
                 ) : view === 'letters' ? (
                     <LettersView focusVersionId={lettersFocusId} />
+                ) : view === 'jobs' ? (
+                    <div className="fixed inset-0 top-[41px]">
+                        <JobInboxView onConverted={(app) => setApplications((prev) => [app, ...prev])} />
+                    </div>
                 ) : view === 'archived' ? (
                     <ArchivedView
                         applications={filteredApplications.filter(app => app.isArchived)}

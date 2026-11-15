@@ -35,6 +35,8 @@ cp .env.production.example .env.production
 #   JWT_SECRET   ← generate with `openssl rand -base64 48`; must be ≥32 chars or production refuses to start
 #   CORS_ORIGIN  ← https://your-domain
 #   TUNNEL_TOKEN ← see next step
+# Optional Job Scout settings (ENABLE_SCHEDULER, SCRAPER_MIN_INTERVAL_MIN, SCRAPER_USER_AGENT)
+# are listed with their defaults at the bottom of the example file.
 ```
 
 ### 3. Cloudflare Tunnel
@@ -128,6 +130,7 @@ sudo apt install -y unattended-upgrades
 - Auth endpoints are rate-limited (429); `trust proxy` is configured to get the real client IP.
 - Uploads and domain fields are validated; account deletion runs in a transaction.
 - Production does **not** seed a default admin.
+- Job Scout only fetches from Greenhouse, Lever and user-supplied http(s) RSS URLs, with a 15 s timeout and a 5 MB response cap. RSS URLs are not checked against internal addresses yet, which is fine for a single-user deployment; keep self-registration closed on shared hosts.
 
 ### Cloudflare dashboard
 - **SSL/TLS mode**: `Full` (with a tunnel, edge-to-origin is already encrypted).

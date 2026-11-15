@@ -1,0 +1,25 @@
+{
+  "jobs": [
+    {
+      "id": 1001,
+      "title": "Senior Backend Engineer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1001",
+      "location": { "name": "Paris, France" },
+      "updated_at": "2026-11-10T09:00:00-05:00"
+    },
+    {
+      "id": 1002,
+      "title": "Backend Engineer, Payments",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1002",
+      "location": { "name": "Remote" },
+      "updated_at": "2026-11-11T09:00:00-05:00"
+    },
+    {
+      "id": 1003,
+      "title": "Product Designer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1003",
+      "location": { "name": "Paris, France" },
+      "updated_at": "2026-11-12T09:00:00-05:00"
+    }
+  ]
+}

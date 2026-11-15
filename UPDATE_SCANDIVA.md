@@ -1,86 +1,86 @@
-# Candivana 擴充計畫：Job Scout + Email
+# Candivana Expansion Plan: Job Scout + Email
 
-> 設計文件，尚未實作。依 commit `565d09b` 的程式碼撰寫；架構背景見 [NOTE.md](NOTE.md)。
+> Design document, not yet implemented. Written against the code at commit `565d09b`; see [NOTE.md](NOTE.md) for architecture background.
 
-**一句話：** 讓 Candivana 從「追蹤已知的申請」延伸成完整迴圈：**找職缺 → 一鍵轉成申請 → 寄出申請信 → 面試前提醒**，而且仍然自架、資料留在本機。
-
----
-
-## 1. 為什麼要做
-
-目前每一筆 `Application` 都要手動輸入（或貼職缺文字給 `/ai/parse-job`）。使用者實際的流程是：
-
-1. 每天到好幾個求職網站搜尋同樣的關鍵字
-2. 把有興趣的職缺複製進 Candivana
-3. 到 Gmail 另外寫信、附上 CV 和動機信
-4. 自己記得面試時間
-
-第 1、3、4 步都在 Candivana 外面完成。這次擴充就是把這三步搬進來。
-
-NOTE.md §2 寫過一個設計賭注：**「不需要背景工作 → 沒有 queue、cron、寄信」**。這次擴充會推翻這個假設，所以要新增一個背景 worker 行程（見 §4）。
+**In one sentence:** extend Candivana from "tracking applications you already know about" into a full loop: **find jobs → turn one into an application in one click → send the application email → get reminded before interviews**, while staying self-hosted with data kept locally.
 
 ---
 
-## 2. 功能總覽
+## 1. Why
 
-### 2.1 Job Scout（爬職缺）
+Today every `Application` is entered by hand (or by pasting job text into `/ai/parse-job`). The user's actual workflow is:
 
-| 功能 | 說明 |
+1. Search the same keywords on several job sites every day
+2. Copy interesting postings into Candivana
+3. Write an email separately in Gmail, attaching the CV and cover letter
+4. Remember interview times themselves
+
+Steps 1, 3 and 4 all happen outside Candivana. This expansion brings those three steps in.
+
+NOTE.md §2 records a design bet: **"no background jobs needed → no queue, cron or email"**. This expansion overturns that assumption, so it adds a background scheduler. It runs inside the api process (see §4).
+
+---
+
+## 2. Feature overview
+
+### 2.1 Job Scout (job scraper)
+
+| Feature | Description |
 |---|---|
-| 儲存搜尋 | 關鍵字、地點、合約類型、來源清單、抓取頻率 |
-| 排程抓取 | worker 依頻率執行，也可以手動按「立即執行」 |
-| 去重 | 用 `(userId, source, externalId)` 判斷，同一職缺不會出現兩次 |
-| Job Inbox | 新的職缺列表，可以標記 saved、dismissed |
-| 一鍵轉申請 | 建立一筆 `Application`（status = `To Apply`），自動帶入 `link`、`platform`、`salary`、`contractType` |
+| Saved searches | Keywords, location, contract type, source list, fetch frequency |
+| Scheduled fetching | The worker runs on the configured frequency; there's also a manual "Run now" |
+| Dedup | Keyed on `(userId, source, externalId)`, so the same posting never appears twice |
+| Job Inbox | List of new postings that can be marked saved or dismissed |
+| One-click convert | Creates an `Application` (status = `To Apply`), prefilling `link`, `platform`, `salary`, `contractType` |
 
-**來源有兩種，透過可插拔的 adapter 支援：**
+**Two kinds of sources, supported through pluggable adapters:**
 
-- **公開 API / RSS**（優先使用，穩定也合規）：Greenhouse Job Board API、Lever Postings API、一般 RSS/Atom feed（例如 Indeed RSS、Welcome to the Jungle）
-- **任意網址 + AI 解析**：抓取 HTML、抽出文字，再交給現有的 `/ai/parse-job` 驗證重試迴圈轉成結構化資料
+- **Public APIs / RSS** (preferred: stable and compliant): Greenhouse Job Board API, Lever Postings API, generic RSS/Atom feeds (e.g. Indeed RSS, Welcome to the Jungle)
+- **Any URL + AI parsing**: fetch the HTML, extract the text, and hand it to the existing `/ai/parse-job` validate-and-retry loop to turn it into structured data
 
 ### 2.2 Email
 
-每位使用者自己設定 SMTP（例如 Gmail App Password、Fastmail、自架 Postfix），跟現在 AI endpoint 一樣是「自帶設定」模式。沒有設定 SMTP 時，寄信功能回 400，其他功能照常運作。
+Each user configures their own SMTP (e.g. Gmail App Password, Fastmail, self-hosted Postfix), following the same "bring your own config" model as the AI endpoint. Without SMTP configured, sending returns 400 and everything else keeps working.
 
-| 用途 | 觸發方式 | 收件人 | 對應偏好 |
+| Use | Trigger | Recipient | Preference |
 |---|---|---|---|
-| **寄申請信給 HR** | 使用者按鈕，**預覽並確認後才寄** | 招募方 | — |
-| **職缺快報（digest）** | worker 每天在 `digestHour` 寄出 | 自己 | `User.notifyDigest` |
-| **面試提醒** | worker 在 stage 日期前 `reminderLeadHours` 小時寄出 | 自己 | `User.notifyReminders` |
+| **Send application to HR** | User clicks a button; **sent only after preview and confirmation** | The recruiter | — |
+| **Job digest** | Worker sends daily at `digestHour` | Self | `User.notifyDigest` |
+| **Interview reminder** | Worker sends `reminderLeadHours` hours before the stage date | Self | `User.notifyReminders` |
 
-> `notifyEmail`、`notifyReminders`、`notifyDigest` 已經在 schema 裡，也可以透過 [auth.routes.js:85](backend/src/routes/auth.routes.js#L85) 讀寫，只是目前沒有任何程式根據它們動作。這次擴充讓這些欄位真正生效。
+> `notifyEmail`, `notifyReminders` and `notifyDigest` are already in the schema and can be read/written via [auth.routes.js:85](backend/src/routes/auth.routes.js#L85), but nothing acts on them yet. This expansion makes them real.
 
 ---
 
-## 3. 跟現有架構怎麼銜接
+## 3. How it connects to the existing architecture
 
-| 現有元件 | 新功能怎麼用它 |
+| Existing component | How the new features use it |
 |---|---|
-| `Application`（[schema.prisma](backend/prisma/schema.prisma)） | 仍是中心。`JobPosting` 轉換後就成為一筆 `Application`，用 `applicationId` 回連 |
-| AI 驗證迴圈（[ai.routes.js:66](backend/src/routes/ai.routes.js#L66)、[aiClient.js](backend/src/lib/aiClient.js)） | 把 `parse-job` 的核心邏輯抽成 `lib/parseJob.js`，讓 HTML adapter 和原本的路由共用 |
-| CV 庫（`Resume.filePath`，[uploads.js](backend/src/lib/uploads.js)） | 申請信直接附上關聯的 `Resume` 檔案 |
-| 動機信（`LetterVersion`） | 附件 PDF：見下方的取捨 |
-| 身分驗證（[middleware/auth.js](backend/src/middleware/auth.js)） | 所有新路由都用 `authenticateToken`，查詢一律帶 `userId` |
-| 測試（[tests/helpers.js](backend/tests/helpers.js)） | 新路由沿用 vitest + supertest 的寫法 |
+| `Application` ([schema.prisma](backend/prisma/schema.prisma)) | Still the center. A converted `JobPosting` becomes an `Application`, linked back via `applicationId` |
+| AI validation loop ([ai.routes.js:66](backend/src/routes/ai.routes.js#L66), [aiClient.js](backend/src/lib/aiClient.js)) | Extract the core of `parse-job` into `lib/parseJob.js`, shared by the HTML adapter and the existing route |
+| CV library (`Resume.filePath`, [uploads.js](backend/src/lib/uploads.js)) | The application email attaches the linked `Resume` file directly |
+| Cover letters (`LetterVersion`) | Attachment PDF: see the trade-off below |
+| Auth ([middleware/auth.js](backend/src/middleware/auth.js)) | All new routes use `authenticateToken`; every query is scoped by `userId` |
+| Tests ([tests/helpers.js](backend/tests/helpers.js)) | New routes follow the existing vitest + supertest style |
 
-**動機信 PDF 的取捨：** 目前 PDF 在前端用 jsPDF 產生（[letterPdf.ts](frontend/src/lib/letterPdf.ts)），伺服器沒有 PDF 引擎。
+**Cover-letter PDF trade-off:** PDFs are currently generated in the frontend with jsPDF ([letterPdf.ts](frontend/src/lib/letterPdf.ts)); the server has no PDF engine.
 
-- **方案 A（建議）**：寄信對話框由前端產生 PDF，跟寄信請求一起上傳。所見即所得，後端不用加依賴。
-- 方案 B：後端加 PDF 產生器。worker 可以自己產生，但版面會跟前端預覽分成兩份程式碼，容易不一致。
+- **Option A (recommended)**: the send dialog generates the PDF in the frontend and uploads it with the send request. What you see is what you get, and the backend needs no new dependency.
+- Option B: add a PDF generator to the backend. The worker could generate it itself, but the layout would live in two codebases and drift.
 
-寄申請信一定要使用者在瀏覽器裡確認，所以方案 A 沒有缺點。
+Sending an application always requires the user to confirm in the browser, so Option A has no downside.
 
 ---
 
-## 4. 系統全貌（新增部分以粗框標示）
+## 4. System overview (new parts shown with thick borders)
 
 ```mermaid
 flowchart LR
-    U["瀏覽器<br/>React SPA"] -->|"/api/*"| API["api: Express :3000"]
+    U["Browser<br/>React SPA"] -->|"/api/*"| API["api: Express :3000"]
 
-    subgraph CORE["核心（共用同一個 image）"]
+    subgraph CORE["Core (shared image)"]
         API
-        W["worker: node src/worker.js<br/>node-cron 排程"]
+        W["worker: node src/worker.js<br/>node-cron scheduling"]
         DB[("SQLite")]
         FS[("uploads/")]
     end
@@ -90,27 +90,29 @@ flowchart LR
     API --> FS
     W --> FS
 
-    W -->|"fetch"| SRC["職缺來源<br/>Greenhouse / Lever / RSS / HTML"]
-    W -.->|"HTML 解析"| LLM["OpenAI 相容 API<br/>（選配）"]
+    W -->|"fetch"| SRC["Job sources<br/>Greenhouse / Lever / RSS / HTML"]
+    W -.->|"HTML parsing"| LLM["OpenAI-compatible API<br/>(optional)"]
     API -.-> LLM
-    W -->|"nodemailer"| SMTP["使用者的 SMTP"]
-    API -->|"寄申請信"| SMTP
+    W -->|"nodemailer"| SMTP["User's SMTP"]
+    API -->|"send application"| SMTP
 
     style W stroke-width:3px
     style SRC stroke-width:3px
     style SMTP stroke-width:3px
 ```
 
-**設計決策：**
+> **Decision update (Job Scout MVP):** the scheduler runs **inside the api process** (`backend/src/scrapers/scheduler.js`, started from `src/index.js`), not as the separate `worker` shown above. Scraping is async network I/O that doesn't block Express's event loop, and a second process writing to the same SQLite file only adds lock contention. The tick loop is self-contained, so it can move to its own process later if email sending or the HTML adapter ever needs it. `node-cron` isn't used either: a one-minute `setInterval` checks `lastRunAt + frequencyMin` in the DB.
 
-- **worker 是獨立行程，但用同一個 image**：API 的請求延遲不會被爬蟲拖慢；部署時只要在 compose 多加一個 service。
-- **不加 Redis**：SQLite 一次只能有一個寫入者，資料量也小。排程狀態直接記在 DB（`JobSearch.lastRunAt`、`ApplicationStage.reminderSentAt`），worker 每分鐘掃一次「到期了嗎」。
-- **冪等**：每封提醒或快報寄出前先寫 `EmailLog`，寄出後再更新狀態。worker 重啟不會重複寄信。
-- **寄申請信走 API 同步處理**：使用者正在等結果，要馬上看到成功或錯誤訊息。
+**Design decisions:**
+
+- **~~The worker is a separate process but uses the same image~~** (superseded, see the note above): scraping can't slow down API request latency, and deployment just adds one service to compose.
+- **No Redis**: SQLite has a single writer and the data is small. Schedule state lives in the DB (`JobSearch.lastRunAt`, `ApplicationStage.reminderSentAt`), and the worker checks "is anything due?" once a minute.
+- **Idempotent**: before each reminder or digest is sent, an `EmailLog` row is written first and its status updated afterwards. Restarting the worker never sends duplicates.
+- **Sending an application goes through the API synchronously**: the user is waiting and needs to see success or the error right away.
 
 ---
 
-## 5. 資料模型（Prisma 新增 / 修改）
+## 5. Data model (Prisma additions / changes)
 
 ```prisma
 model JobSearch {
@@ -118,11 +120,11 @@ model JobSearch {
   userId     Int
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String
-  query      String              // 關鍵字
+  query      String              // keywords
   location   String?
   contractType String?
-  sources    String   @default("[]") // JSON：[{ type: "greenhouse", board: "acme" }, { type: "rss", url: "..." }]
-  frequencyMin Int    @default(1440) // 抓取間隔（分鐘），下限由 SCRAPER_MIN_INTERVAL_MIN 決定
+  sources    String   @default("[]") // JSON: [{ type: "greenhouse", board: "acme" }, { type: "rss", url: "..." }]
+  frequencyMin Int    @default(1440) // fetch interval (minutes); floor set by SCRAPER_MIN_INTERVAL_MIN
   isActive   Boolean  @default(true)
   lastRunAt  DateTime?
   lastError  String?
@@ -138,7 +140,7 @@ model JobPosting {
   searchId    Int?
   search      JobSearch? @relation(fields: [searchId], references: [id], onDelete: SetNull)
   source      String              // "greenhouse" | "lever" | "rss" | "html"
-  externalId  String              // 來源給的 id；沒有的話用 url 的 hash
+  externalId  String              // id from the source; hash of the url if none
   url         String
   company     String
   title       String
@@ -147,10 +149,10 @@ model JobPosting {
   contractType String?
   description String?
   postedAt    DateTime?
-  status      String   @default("new") // new | saved | dismissed | converted（由 validators.js 檢查）
+  status      String   @default("new") // new | saved | dismissed | converted (checked by validators.js)
   applicationId Int?   @unique
   application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  digestedAt  DateTime?            // 已經放進哪一次快報
+  digestedAt  DateTime?            // which digest it was included in
   createdAt   DateTime @default(now())
 
   @@unique([userId, source, externalId])
@@ -172,58 +174,58 @@ model EmailLog {
 }
 ```
 
-**修改現有 model：**
+**Changes to existing models:**
 
 ```prisma
 model User {
-  // ...現有欄位
+  // ...existing fields
   smtpHost          String?
   smtpPort          Int?
   smtpSecure        Boolean @default(true)
   smtpUser          String?
-  smtpPassEnc       String?   // 用 ENCRYPTION_KEY 加密，不存明文
+  smtpPassEnc       String?   // encrypted with ENCRYPTION_KEY, never stored in plaintext
   smtpFrom          String?   // "Your Name <you@example.com>"
-  digestHour        Int     @default(8)   // 使用者時區的整點
+  digestHour        Int     @default(8)   // hour in the user's timezone
   timezone          String  @default("UTC")
   reminderLeadHours Int     @default(24)
-  dailySendLimit    Int     @default(20)  // 寄給 HR 的每日上限
+  dailySendLimit    Int     @default(20)  // daily cap on emails to HR
 }
 
 model ApplicationStage {
-  // ...現有欄位
+  // ...existing fields
   reminderSentAt DateTime?
 }
 
 model Application {
-  // ...現有欄位
-  contactEmail String?   // HR / 招募方的 email
+  // ...existing fields
+  contactEmail String?   // HR / recruiter email
   jobPosting   JobPosting?
 }
 ```
 
-> 目前 schema 是用 `prisma db push` 同步，沒有 migration 檔（NOTE.md §10 #6）。這次新增的欄位都是 nullable 或有預設值，`db push` 可以安全套用。建議趁這次改用 `prisma migrate`。
+> The schema is currently synced with `prisma db push` and has no migration files (NOTE.md §10 #6). All new fields are nullable or have defaults, so `db push` can apply them safely. Switching to `prisma migrate` as part of this work is recommended.
 
 ---
 
-## 6. Source adapter
+## 6. Source adapters
 
 ```
 backend/src/scrapers/
-├── index.js        # 依 source.type 分派，統一限速、逾時、User-Agent
+├── index.js        # dispatch on source.type; shared rate limit, timeout, User-Agent
 ├── greenhouse.js   # GET https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true
 ├── lever.js        # GET https://api.lever.co/v0/postings/{company}?mode=json
 ├── rss.js          # rss-parser
-├── html.js         # fetch → cheerio 抽文字 → lib/parseJob.js（AI）
-└── safeFetch.js    # SSRF 防護、robots.txt 檢查、回應大小上限
+├── html.js         # fetch → cheerio text extraction → lib/parseJob.js (AI)
+└── safeFetch.js    # SSRF protection, robots.txt check, response size cap
 ```
 
-所有 adapter 都實作同一個介面：
+Every adapter implements the same interface:
 
 ```js
 /**
- * @param {object} source  JobSearch.sources 裡的一項
+ * @param {object} source  one entry from JobSearch.sources
  * @param {object} search  { query, location, contractType }
- * @param {object} ctx     { user, signal }，HTML adapter 需要 user 的 AI 設定
+ * @param {object} ctx     { user, signal }; the HTML adapter needs the user's AI settings
  * @returns {Promise<NormalizedJob[]>}
  */
 export async function fetchJobs(source, search, ctx) {}
@@ -231,99 +233,101 @@ export async function fetchJobs(source, search, ctx) {}
 // NormalizedJob = { externalId, url, company, title, location?, salary?, contractType?, description?, postedAt? }
 ```
 
-**HTML adapter 的流程：**
+**HTML adapter flow:**
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant W as worker
-    participant S as 目標網站
+    participant S as Target site
     participant L as LLM
     participant D as SQLite
-    W->>W: safeFetch：解析 DNS，擋內網 IP，檢查 robots.txt
-    W->>S: GET（逾時 15 秒，最多 2 MB）
+    W->>W: safeFetch: resolve DNS, block internal IPs, check robots.txt
+    W->>S: GET (15 s timeout, max 2 MB)
     S-->>W: HTML
-    W->>W: cheerio 移除 script/nav，抽出主要文字
-    W->>L: parseJob（沿用驗證重試迴圈）
-    L-->>W: 結構化欄位
-    W->>D: upsert JobPosting（unique 鍵去重）
+    W->>W: cheerio strips script/nav, extracts main text
+    W->>L: parseJob (reuses the validate-and-retry loop)
+    L-->>W: structured fields
+    W->>D: upsert JobPosting (deduped on unique key)
 ```
 
-API adapter 會先在本地用 `query`、`location` 過濾，因為 Greenhouse 和 Lever 的公開 API 都是回傳整個 board 的職缺。
+API adapters filter locally on `query` and `location` first, because the Greenhouse and Lever public APIs return every posting on the board.
 
 ---
 
-## 7. API 規劃
+## 7. API design
 
-所有路由都需要 `authenticateToken`，查詢一律帶 `userId`。不是自己的資料回 404（沿用現有的 P2025 處理）。
+All routes require `authenticateToken`, and every query is scoped by `userId`. Other users' data returns 404 (reusing the existing P2025 handling).
 
 ### Job Scout
 
-| Method | Path | 說明 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/job-searches` | 列出儲存的搜尋 |
-| POST | `/job-searches` | 新增 |
-| PUT | `/job-searches/:id` | 修改 |
-| DELETE | `/job-searches/:id` | 刪除（底下的 posting 保留，`searchId` 設為 null） |
-| POST | `/job-searches/:id/run` | 立即執行一次（有冷卻時間） |
-| GET | `/job-postings?status=new&searchId=` | Inbox 列表 |
-| PATCH | `/job-postings/:id` | 改 status（saved / dismissed） |
-| POST | `/job-postings/:id/convert` | 建立 `Application`，回傳新的 application |
+| GET | `/job-searches` | List saved searches |
+| POST | `/job-searches` | Create |
+| PUT | `/job-searches/:id` | Update |
+| DELETE | `/job-searches/:id` | Delete (postings are kept, `searchId` set to null) |
+| POST | `/job-searches/:id/run` | Run once now (with a cooldown) |
+| GET | `/job-postings?status=new&searchId=` | Inbox list |
+| PATCH | `/job-postings/:id` | Change status (saved / dismissed) |
+| POST | `/job-postings/:id/convert` | Create an `Application` and return it |
 
 ### Email
 
-| Method | Path | 說明 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/email/settings` | 回傳 SMTP 設定（**不回密碼**，只回 `hasPassword: true`） |
-| PUT | `/email/settings` | 儲存 SMTP 設定與通知偏好 |
-| POST | `/email/test` | 寄一封測試信給自己 |
-| POST | `/applications/:id/send/preview` | 產生預設主旨、內文、附件清單（不寄出） |
-| POST | `/applications/:id/send` | multipart：`to`、`subject`、`body`、`letterPdf`（選配）。寄出成功後把 status 改成 `Applied`、`appliedDate` 設為現在，並寫入 `EmailLog` |
-| GET | `/email/logs` | 寄送紀錄 |
+| GET | `/email/settings` | Return SMTP settings (**never the password**, only `hasPassword: true`) |
+| PUT | `/email/settings` | Save SMTP settings and notification preferences |
+| POST | `/email/test` | Send a test email to yourself |
+| POST | `/applications/:id/send/preview` | Generate default subject, body and attachment list (nothing sent) |
+| POST | `/applications/:id/send` | multipart: `to`, `subject`, `body`, `letterPdf` (optional). On success, set status to `Applied`, `appliedDate` to now, and write `EmailLog` |
+| GET | `/email/logs` | Send history |
 
-**寄申請信的流程：**
+**Application send flow:**
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as 瀏覽器
+    participant B as Browser
     participant A as api
     participant M as SMTP
     B->>A: POST /applications/:id/send/preview
-    A-->>B: 預設主旨 / 內文 / 附件（Resume 名稱）
-    B->>B: 使用者編輯；前端用 letterPdf.ts 產生動機信 PDF
-    B->>A: POST /applications/:id/send（使用者已確認）
-    A->>A: 檢查每日上限、SMTP 設定、收件人格式
-    A->>M: nodemailer sendMail（附 Resume 檔案 + 動機信 PDF）
-    alt 成功
-        A->>A: status=Applied、寫 EmailLog(sent)
+    A-->>B: default subject / body / attachments (Resume name)
+    B->>B: user edits; frontend generates cover-letter PDF with letterPdf.ts
+    B->>A: POST /applications/:id/send (user confirmed)
+    A->>A: check daily limit, SMTP settings, recipient format
+    A->>M: nodemailer sendMail (Resume file + cover-letter PDF attached)
+    alt success
+        A->>A: status=Applied, write EmailLog(sent)
         A-->>B: 200
-    else 失敗
-        A->>A: 寫 EmailLog(failed, error)
-        A-->>B: 502 + SMTP 錯誤摘要
+    else failure
+        A->>A: write EmailLog(failed, error)
+        A-->>B: 502 + SMTP error summary
     end
 ```
 
 ---
 
-## 8. 前端
+## 8. Frontend
 
-| 位置 | 改動 |
+| Location | Change |
 |---|---|
-| 側邊欄 | 新增 **Job Inbox** view（顯示新職缺數量的 badge） |
-| Job Inbox | 左側是搜尋清單，右側是職缺卡片：Save / Dismiss / **Add to board** / 開啟原網址 |
-| 搜尋編輯器 | 關鍵字、地點、來源（Greenhouse board 名稱、Lever 公司 slug、RSS URL、任意 URL）、頻率 |
-| Settings | 新增 **Email** 區塊：SMTP 表單、「寄測試信」、digest 時間、時區、提醒提前時數、通知開關 |
-| Application 詳情 | 新增 `contactEmail` 欄位與 **Send application** 按鈕 → 寄信對話框（收件人、主旨、內文、附件預覽） |
-| 申請卡片 | 已寄出的申請顯示 ✉️ 圖示與寄送時間 |
+| Sidebar | New **Job Inbox** view (with a badge for the new-posting count) |
+| Job Inbox | Search list on the left, posting cards on the right: Save / Dismiss / **Add to board** / open original URL |
+| Search editor | Keywords, location, sources (Greenhouse board name, Lever company slug, RSS URL, any URL), frequency |
+| Settings | New **Email** section: SMTP form, "Send test email", digest hour, timezone, reminder lead hours, notification toggles |
+| Application detail | New `contactEmail` field and a **Send application** button → send dialog (recipient, subject, body, attachment preview) |
+| Application card | Sent applications show a ✉️ icon and the send time |
 
-前端目前沒有 router，都靠 `App.tsx` 的 `view` state 切換（NOTE.md §8）。Job Inbox 照同樣方式加一個 view，自己抓自己的資料（跟 `LettersView` 一樣）。
+The frontend has no router; views switch via the `view` state in `App.tsx` (NOTE.md §8). Job Inbox is added the same way, as a view that fetches its own data (like `LettersView`).
 
 ---
 
-## 9. 部署與設定
+## 9. Deployment and configuration
 
-### docker-compose 新增 worker
+### Add the worker to docker-compose
+
+> Superseded for the Job Scout MVP: no extra service is needed, since the scheduler runs inside `api`. Kept for reference in case the worker is split out later.
 
 ```yaml
   worker:
@@ -344,64 +348,64 @@ sequenceDiagram
       - api
 ```
 
-`docker-compose.prod.yml` 也要加上同樣的 service，改用 named volume `api-data`、`api-uploads`。
+`docker-compose.prod.yml` needs the same service, using the named volumes `api-data` and `api-uploads`.
 
-### 新增環境變數
+### New environment variables
 
-| 變數 | 必填 | 說明 |
+| Variable | Required | Description |
 |---|---|---|
-| `ENCRYPTION_KEY` | 是 | 32 bytes base64，用來加密 SMTP 密碼。`make init` 自動產生 |
-| `SCRAPER_USER_AGENT` | 否 | 爬蟲的 User-Agent |
-| `SCRAPER_MIN_INTERVAL_MIN` | 否 | 每個搜尋最短抓取間隔，預設 60 |
-| `ENABLE_WORKER` | 否 | 設成 `false` 時 worker 啟動後直接退出（給不想要背景工作的人） |
+| `ENCRYPTION_KEY` | Yes | 32 bytes base64, used to encrypt SMTP passwords. Generated by `make init` |
+| `SCRAPER_USER_AGENT` | No | User-Agent for the scraper |
+| `SCRAPER_MIN_INTERVAL_MIN` | No | Minimum fetch interval per search, default 60 |
+| `ENABLE_SCHEDULER` | No | When `false`, the api doesn't start the Job Scout scheduler (replaces `ENABLE_WORKER`) |
 
-### 新增依賴（backend）
+### New dependencies (backend)
 
-`nodemailer`、`node-cron`、`rss-parser`、`cheerio`
+Job Scout MVP: `rss-parser` only. Later phases: `nodemailer` (email) and `cheerio` (HTML adapter). `node-cron` isn't needed.
 
 ---
 
-## 10. 安全與合規
+## 10. Security and compliance
 
-這幾點對應 NOTE.md §10 已經指出的架構張力，新功能不能讓它們更嚴重：
+These map to architectural tensions already noted in NOTE.md §10; the new features must not make them worse:
 
-| 風險 | 對策 |
+| Risk | Mitigation |
 |---|---|
-| **SSRF**：使用者給任意 URL，伺服器就會去抓（NOTE §10 #3 的同類問題） | `safeFetch` 先解析 DNS，擋私有 IP、loopback、link-local、metadata IP（169.254.169.254）；不跟隨轉址到內網；限制回應大小和逾時 |
-| **網站 ToS / robots.txt** | 預設遵守 robots.txt；每個網域加限速；**不支援需要登入的網站（例如 LinkedIn）**；優先使用官方公開 API |
-| **憑證明文**：現有 `aiApiKey` 是明文存放 | SMTP 密碼用 AES-256-GCM 加密存放；API 永遠不回傳密碼。建議 `aiApiKey` 之後也改用同一套機制 |
-| **被當成垃圾信工具** | 寄給 HR 一律要使用者手動確認；沒有批次寄送；`dailySendLimit` 限制每日數量；所有寄送都記在 `EmailLog` |
-| **Email header injection** | 收件人、主旨用 nodemailer 的參數傳入，不自己拼 header；寄送前驗證 email 格式 |
-| **刪帳號殘留**（NOTE §10 #4） | `JobSearch`、`JobPosting`、`EmailLog` 都設 `onDelete: Cascade` |
+| **SSRF**: the user supplies any URL and the server fetches it (same class as NOTE §10 #3) | `safeFetch` resolves DNS first and blocks private IPs, loopback, link-local and the metadata IP (169.254.169.254); never follows redirects into internal networks; caps response size and timeout |
+| **Site ToS / robots.txt** | Respect robots.txt by default; rate-limit per domain; **no support for sites that require login (e.g. LinkedIn)**; prefer official public APIs |
+| **Plaintext credentials**: the existing `aiApiKey` is stored in plaintext | SMTP passwords are stored encrypted with AES-256-GCM; the API never returns them. Recommend moving `aiApiKey` to the same mechanism later |
+| **Abuse as a spam tool** | Emails to HR always require manual confirmation; no bulk sending; `dailySendLimit` caps daily volume; every send is recorded in `EmailLog` |
+| **Email header injection** | Recipient and subject are passed as nodemailer parameters, never hand-built headers; email format is validated before sending |
+| **Leftovers after account deletion** (NOTE §10 #4) | `JobSearch`, `JobPosting` and `EmailLog` all use `onDelete: Cascade` |
 
 ---
 
-## 11. 分階段實作
+## 11. Phased implementation
 
-| 階段 | 範圍 | 為什麼這樣排 |
+| Phase | Scope | Why this order |
 |---|---|---|
-| **Phase 1** | SMTP 設定 + 加密、`/email/test`、worker 骨架、**面試提醒** | 範圍最小，先驗證 worker、排程、冪等寄信這套基礎 |
-| **Phase 2** | Job Scout：`JobSearch` / `JobPosting`、Greenhouse / Lever / RSS adapter、Job Inbox、convert、**職缺快報** | 提供核心價值，而且只用到穩定的公開 API |
-| **Phase 3** | HTML + AI adapter（含 `safeFetch`）、**寄申請信給 HR** | 風險最高（SSRF、對外寄信），放在基礎穩定之後 |
+| **Phase 1** | SMTP settings + encryption, `/email/test`, worker skeleton, **interview reminders** | Smallest scope; validates the worker, scheduling and idempotent sending foundation first |
+| **Phase 2** | Job Scout: `JobSearch` / `JobPosting`, Greenhouse / Lever / RSS adapters, Job Inbox, convert, **job digest** | Delivers the core value using only stable public APIs |
+| **Phase 3** | HTML + AI adapter (with `safeFetch`), **sending applications to HR** | Highest risk (SSRF, outbound email), so it comes after the foundation is stable |
 
-每個階段都可以單獨合併、單獨上線。
-
----
-
-## 12. 測試計畫
-
-- **路由**：vitest + supertest，沿用 [tests/helpers.js](backend/tests/helpers.js) 建立使用者。每個新路由都要測「別人的資料回 404」。
-- **Adapter**：把 Greenhouse、Lever、RSS 的回應存成 fixture 測試，不打真實網路。
-- **safeFetch**：測試 `127.0.0.1`、`10.x`、`169.254.169.254`、DNS rebinding、轉址到內網都會被擋。
-- **寄信**：測試時用 nodemailer 的 `jsonTransport`；本機手動測試時在 compose 加 [Mailpit](https://github.com/axllent/mailpit) 當假的 SMTP。
-- **worker 冪等**：同一個 stage 連續跑兩次排程，只會寄出一封提醒。
-- **CI**：沿用 [ci.yml](.github/workflows/ci.yml)，不需要額外設定。
+Each phase can be merged and shipped on its own.
 
 ---
 
-## 13. 不在這次範圍內
+## 12. Test plan
 
-- 自動投遞（自動填寫求職網站表單）
-- 讀取信箱 / 追蹤 HR 回信（IMAP）
-- 需要登入的求職網站
-- 推播通知（Telegram、Slack 等）。之後可以沿用同一套 `EmailLog` / 偏好設定擴充成多管道通知
+- **Routes**: vitest + supertest, creating users with [tests/helpers.js](backend/tests/helpers.js). Every new route tests "other users' data returns 404".
+- **Adapters**: Greenhouse, Lever and RSS responses saved as fixtures; no real network.
+- **safeFetch**: `127.0.0.1`, `10.x`, `169.254.169.254`, DNS rebinding and redirects into internal networks are all blocked.
+- **Email**: tests use nodemailer's `jsonTransport`; for local manual testing, add [Mailpit](https://github.com/axllent/mailpit) to compose as a fake SMTP server.
+- **Worker idempotency**: running the schedule twice for the same stage sends only one reminder.
+- **CI**: reuse [ci.yml](.github/workflows/ci.yml); no extra setup needed.
+
+---
+
+## 13. Out of scope
+
+- Auto-applying (automatically filling job-site forms)
+- Reading the inbox / tracking HR replies (IMAP)
+- Job sites that require login
+- Push notifications (Telegram, Slack, etc.). These can later reuse the same `EmailLog` / preferences to become multi-channel notifications
